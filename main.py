@@ -4,8 +4,40 @@ import cv2
 from ultralytics import YOLO
 import numpy as np
 
+from paho.mqtt import client as mqtt_client
+
+# MQTT Server Parameters
+MQTT = {
+    "client_id": "elrama-NOVA",
+    "broker": "broker.emqx.io",
+    "user": "ramael",
+    "password": "elrama",
+    "topic": "/HSC032/elrama/buzzer",
+}
+
+def connect_mqtt():
+    def on_connect(client, userdata, flags, reason_code, properties):
+        print(f"Connected with result code {reason_code}")
+        client.subscribe(MQTT['topic'])
+
+    mqttc = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION2)
+    mqttc.on_connect = on_connect
+    mqttc.connect(MQTT['broker'], 1883, 60)
+
+    # mqttc.loop_forever()
+
+    return mqttc
+
+client = connect_mqtt()
+
+def send_notif_to_buzzer():
+    client.publish(MQTT['topic'], 'buzzer on')
+
 # Load model
-model = YOLO("yolov8n-pose.pt")
+box_model = YOLO("model1.pt")
+crime_model = YOLO("crime_model.pt")
+weapon_model = YOLO("weapon_model.pt")
+model = YOLO("yolo11n.pt")
 
 # ESP32-CAM stream URL
 ESP32_STREAM_URL = "http://192.168.204.161:81/stream"
@@ -14,60 +46,9 @@ ESP32_STREAM_URL = "http://192.168.204.161:81/stream"
 st.title("🏠 Housing Security System")
 frame_placeholder = st.empty()
 
-# Detection logic
-def is_crouching(keypoints):
-    try:
-        # Key joints
-        left_hip = keypoints[11]
-        right_hip = keypoints[12]
-        left_knee = keypoints[13]
-        right_knee = keypoints[14]
-        left_ankle = keypoints[15]
-        right_ankle = keypoints[16]
-
-        # Average y-positions
-        hip_y = (left_hip[1] + right_hip[1]) / 2
-        knee_y = (left_knee[1] + right_knee[1]) / 2
-        ankle_y = (left_ankle[1] + right_ankle[1]) / 2
-
-        # Estimated leg length
-        leg_length = ankle_y - hip_y
-
-        # Crouching: hips are lower (closer) to knees than normal
-        crouch_ratio = (knee_y - hip_y) / leg_length
-
-        return crouch_ratio < 0.4  # Adjust threshold as needed
-    except:
-        return False
-
-
-def is_fighting_pose(keypoints):
-    try:
-        # Extract important joints
-        left_wrist = keypoints[9]
-        right_wrist = keypoints[10]
-        left_shoulder = keypoints[5]
-        right_shoulder = keypoints[6]
-        left_hip = keypoints[11]
-        right_hip = keypoints[12]
-        mid_hip_y = (left_hip[1] + right_hip[1]) / 2
-
-        # Rule: Wrists are high & close to head → possibly guarding
-        raised_hands = (left_wrist[1] < mid_hip_y) and (right_wrist[1] < mid_hip_y)
-
-        # Rule: Shoulder width wide → aggressive stance
-        shoulder_width = abs(left_shoulder[0] - right_shoulder[0])
-        hand_distance = abs(left_wrist[0] - right_wrist[0])
-        hands_apart = hand_distance > (0.8 * shoulder_width)
-
-        return raised_hands and hands_apart
-    except:
-        return False
-
-
 
 # Stream processing
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(1)
 
 while True:
     ret, frame = cap.read()
@@ -76,16 +57,25 @@ while True:
         break
 
     frame = cv2.resize(frame, (640, 480))
-    results = model(frame)
-    annotated = results[0].plot()
-
-    for person in results[0].keypoints.data:
-        keypoints = person.cpu().numpy().reshape(-1, 3)
-        if is_crouching(keypoints):
-            cv2.putText(annotated, "SUSPICIOUS: Crouching!", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-        if is_fighting_pose(keypoints):
-            cv2.putText(annotated, "SUSPICIOUS: Fighting Stance!", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+    
+    results = model(frame, conf=0.6)
+    annotated1 = results[0].plot()
 
 
-    frame_placeholder.image(annotated, channels="BGR")
+    box_results = box_model(annotated1, conf=0.8)
+    annotated2 = box_results[0].plot()
 
+    print(box_results[0].boxes.cls)
+
+    if 1 in box_results[0].boxes.cls:
+        send_notif_to_buzzer()
+
+    # box_results[0]
+
+    # crime_results = crime_model(annotated2)
+    # annotated3 = crime_results[0].plot()
+
+    # weapon_results = weapon_model(annotated3)
+    # annotated4 = weapon_results[0].plot()
+
+    frame_placeholder.image(annotated2, channels="BGR")
