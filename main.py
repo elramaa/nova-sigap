@@ -3,79 +3,67 @@ import streamlit as st
 import cv2
 from ultralytics import YOLO
 import numpy as np
+from detection import *
 
-from paho.mqtt import client as mqtt_client
-
-# MQTT Server Parameters
-MQTT = {
-    "client_id": "elrama-NOVA",
-    "broker": "broker.emqx.io",
-    "user": "ramael",
-    "password": "elrama",
-    "topic": "/HSC032/elrama/buzzer",
-}
-
-def connect_mqtt():
-    def on_connect(client, userdata, flags, reason_code, properties):
-        print(f"Connected with result code {reason_code}")
-        client.subscribe(MQTT['topic'])
-
-    mqttc = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION2)
-    mqttc.on_connect = on_connect
-    mqttc.connect(MQTT['broker'], 1883, 60)
-
-    # mqttc.loop_forever()
-
-    return mqttc
+from mqtt import connect_mqtt, MQTT
 
 client = connect_mqtt()
 
-def send_notif_to_buzzer():
-    client.publish(MQTT['topic'], 'buzzer on')
+def send_notif_to_buzzer(msg):
+    client.publish(MQTT['topic'], msg)
 
 # Load model
-box_model = YOLO("model1.pt")
-crime_model = YOLO("crime_model.pt")
-weapon_model = YOLO("weapon_model.pt")
-model = YOLO("yolo11n.pt")
+# box_model = YOLO("model1.pt")
+# crime_model = YOLO("crime_model.pt")
+# weapon_model = YOLO("weapon_model.pt")
+pose_model = YOLO("yolo11n-pose.pt")
+obj_model = YOLO("models/obj_model.pt")
 
 # ESP32-CAM stream URL
 ESP32_STREAM_URL = "http://192.168.204.161:81/stream"
+
+def detected_items(model, results):
+    names = set()
+    for result in results:
+        boxes = result.boxes
+        for box in boxes:
+            cls_id = int(box.cls)
+            name = model.names[cls_id]
+            names.add(name)
+    return names
 
 # Streamlit UI
 st.title("🏠 Housing Security System")
 frame_placeholder = st.empty()
 
-
 # Stream processing
-cap = cv2.VideoCapture(1)
+cap = cv2.VideoCapture(0)
 
 while True:
     ret, frame = cap.read()
     if not ret:
-        st.warning("No video from ESP32-CAM")
+        st.warning("No video from Webcam")
         break
 
     frame = cv2.resize(frame, (640, 480))
+    frame = cv2.flip(frame, 1)
     
-    results = model(frame, conf=0.6)
-    annotated1 = results[0].plot()
+    pose_results = pose_model(frame, conf=0.4)
+    annotated = pose_results[0].plot()
 
+    object_results = obj_model(annotated, conf=0.6)
+    annotated = object_results[0].plot()
 
-    box_results = box_model(annotated1, conf=0.8)
-    annotated2 = box_results[0].plot()
+    detected = detected_items(obj_model, object_results)
+    print(detected)
 
-    print(box_results[0].boxes.cls)
+    if 'package' in detected:
+        send_notif_to_buzzer("paket")
 
-    if 1 in box_results[0].boxes.cls:
-        send_notif_to_buzzer()
+    frame_placeholder.image(annotated, channels="BGR")
+    cv2.imshow("Live Detection", annotated)
 
-    # box_results[0]
+    cv2.waitKey(1)
 
-    # crime_results = crime_model(annotated2)
-    # annotated3 = crime_results[0].plot()
-
-    # weapon_results = weapon_model(annotated3)
-    # annotated4 = weapon_results[0].plot()
-
-    frame_placeholder.image(annotated2, channels="BGR")
+cap.release()
+cv2.destroyAllWindows()
