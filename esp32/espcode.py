@@ -12,11 +12,6 @@ user = ""
 password = ""
 topic = "/NOVA/elramaa/buzzer"
 
-# ====== UBIDOTS Parameters ======
-UBIDOTS_TOKEN = "BBUS-F47US2yA1JB69pIjKUZHK5HJmYufum"
-DEVICE_LABEL = "house"
-UBIDOTS_URL = f"http://industrial.api.ubidots.com/api/v1.6/devices/{DEVICE_LABEL}"
-
 # ====== WiFi Connection ======
 wifi_client = network.WLAN(network.STA_IF)
 wifi_client.active(True)
@@ -35,29 +30,13 @@ client = MQTTClient(client_id, broker, user=user, password=password)
 client.connect()
 print('Connected to MQTT')
 
-# ====== Send data to Ubidots ======
-def send_data(variable, value):
-    headers = {
-        "Content-Type": "application/json",
-        "X-Auth-Token": UBIDOTS_TOKEN
-    }
-    data = { variable: value }
-
-    try:
-        response = requests.post(url=UBIDOTS_URL, data=ujson.dumps(data), headers=headers)
-        print("Sent to Ubidots:", data)
-        print("Response Code:", response.status_code)
-        del response  # Free memory
-    except Exception as e:
-        print("Gagal mengirim ke Ubidots:", e)
-
 # ====== Setup Buzzer & LED ======
 p23 = Pin(23, Pin.OUT)
 buzzer = PWM(p23)
 buzzer.duty(0)
 buzzer.deinit()
 
-led = Pin(13, Pin.OUT)  # LED internal ESP32 (bisa ganti pin sesuai LED eksternal)
+led = Pin(13, Pin.OUT)
 
 # ====== Bell Sound ======
 def ding_dong():
@@ -100,12 +79,10 @@ def listener(b_topic, b_msg):
     if msg.lower() == 'paket':
         ding_dong()
         client.publish(topic, "Ada paket")
-        send_data("jumlah_paket", 1)
 
     elif msg.lower() == 'bahaya':
         emergency_alarm(10)
         client.publish(topic, "Ada bahaya")
-        send_data("jumlah_bahaya", 1)
 
 # ====== Subscribe and Loop ======
 client.set_callback(listener)
