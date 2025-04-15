@@ -11,7 +11,7 @@ import os
 from bson import Binary
 from mqtt import connect_mqtt, MQTT
 from ubidots import *
-from datetime import datetime
+from datetime import datetime, timedelta
 import face_recognition
 
 load_dotenv()
@@ -26,8 +26,8 @@ def send_notif_to_buzzer(msg):
     client.publish(MQTT['topic'], msg)
 
 # Load model
-yolo_model = YOLO("yolo11n.pt")
-obj_model = YOLO("models/obj_model.pt")
+yolo_model = YOLO("yolo11n.pt") # deteksi person
+obj_model = YOLO("models/obj_model.pt") # deteksi paket, pisau, dan perkelahian
 
 def detected_items(model, results):
     names = set()
@@ -39,18 +39,31 @@ def detected_items(model, results):
             names.add(name)
     return names
 
-def save_detections(tag, frame):
+def save_image(frame):
     filename = "results/result.jpg"
     frame_save = cv2.resize(frame, (640, 480))
     cv2.imwrite(filename, frame_save)
     with open(filename, 'rb') as image:
         bin_image = Binary(image.read())
+    return bin_image
+
+def save_detections(tag, frame):
     data = {
         'tag': tag,
         'timestamp': datetime.now(),
-        'image_bin': bin_image,
+        'image_bin': save_image(frame),
     }
     sus_images_collection.insert_one(data)
+
+def check_members():
+    today = datetime.combine(datetime.today(), datetime.min.time())
+    members = db['members'].find({
+        'timestamp': {
+            '$gte': today,
+            '$lte': today + timedelta(days=1)
+        }
+    })
+    return [member['name'] for member in members]
 
 # Stream processing
 cap = cv2.VideoCapture(0)
@@ -85,7 +98,7 @@ label_annotator = sv.LabelAnnotator()
 
 last_save_time = time.time()
 
-notified_package_ids = set()
+item_ids = {name: set() for name in ['package', 'knife', 'fight']}
 
 send_to_ubidots('camera_status', {
     'value': 1,
@@ -119,18 +132,6 @@ while True:
     detected = detected_items(obj_model, object_results) | detected_items(yolo_model, yolo_results)
     print(detected)
 
-    
-
-    # current_time = time.time()
-    # if current_time - last_save_time >= 5: # save every 5 seconds to not spam
-    #     last_save_time = current_time
-    #     if 'package' in detected:
-    #         send_notif_to_buzzer("paket")
-    #         save_detections('package', annotated)
-    #     if 'fight' in detected:
-    #         send_notif_to_buzzer("bahaya")
-    #         save_detections('fight', annotated)
-
     frame = annotated
 
     rgb_frame = frame[:, :, ::-1]  # BGR → RGB
@@ -138,6 +139,7 @@ while True:
     face_locations = face_recognition.face_locations(rgb_frame)
     face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
 
+    # Pengenalan wajah
     for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
         matches = face_recognition.compare_faces(list(faces.values()), face_encoding, tolerance=0.5)
         name = "unknown"
@@ -145,6 +147,7 @@ while True:
         if True in matches:
             matched_idx = matches.index(True)
             name = list(faces.keys())[matched_idx]
+            
 
         if name == "unknown":
             cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
@@ -152,6 +155,14 @@ while True:
             cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)            
         cv2.putText(frame, name, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
 
+        if name != "unknown" and name not in check_members():
+            db['members'].insert_one({
+                'name': name,
+                'timestamp': datetime.now(),
+                'image_bin': save_image(frame)
+            })
+
+    # Track apabila ada orang yang diam
     for result in yolo_results.boxes:
         # Ambil koordinat kotak
         x1, y1, x2, y2 = map(int, result.xyxy[0])
@@ -188,21 +199,35 @@ while True:
     for box in object_results.boxes:
         cls_id = int(box.cls[0])
         class_name = obj_model.names[cls_id]
+        track_id = int(box.id.item()) if box.id is not None else hash(tuple(map(int, box.xyxy[0]))) % 10000
 
         if class_name == 'package':
-            track_id = int(box.id.item()) if box.id is not None else hash(tuple(map(int, box.xyxy[0]))) % 10000
-
-            if track_id not in notified_package_ids:
-                notified_package_ids.add(track_id)
+            if track_id not in item_ids['package']:
+                item_ids['package'].add(track_id)
+                send_to_ubidots("jumlah_paket", {'value': 1})
                 send_notif_to_buzzer("paket")
                 save_detections('package', annotated)
 
-        elif class_name == 'fight':
+        if class_name == 'fight':
+            if track_id not in item_ids['fight']:
+                send_to_ubidots("jumlah_bahaya", {'value': 1})
+                item_ids['fight'].add(track_id)
             current_time = time.time()
             if current_time - last_save_time >= 10:
                 last_save_time = current_time
                 send_notif_to_buzzer("bahaya")
                 save_detections('fight', annotated)
+
+        if class_name == "knife":
+            if track_id not in item_ids['knife']:
+                send_to_ubidots('jumlah_bahaya', {'value': 1})
+                item_ids['knife'].add(track_id)
+            current_time = time.time()
+            if current_time - last_save_time >= 10:
+                last_save_time = current_time
+                send_notif_to_buzzer("bahaya")
+                save_detections('weapon', annotated)
+
 
     cv2.imshow("Live Detection", annotated)
 
