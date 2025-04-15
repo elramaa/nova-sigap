@@ -178,6 +178,7 @@ while True:
             current_time = time.time()
             if current_time - last_save_time >= 10:
                 last_save_time = current_time
+                send_to_ubidots('jumlah_bahaya', {'value': 1, 'context': {'timestamp': datetime.now().strftime("%H:%M"), 'type': 'Orang Diam'}})
                 send_notif_to_buzzer("bahaya")
                 save_detections('idle', annotated)
         else:
@@ -210,7 +211,7 @@ while True:
 
         if class_name == 'fight':
             if track_id not in item_ids['fight']:
-                send_to_ubidots("jumlah_bahaya", {'value': 1})
+                send_to_ubidots('jumlah_bahaya', {'value': 1, 'context': {'timestamp': datetime.now().strftime("%H:%M"), 'type': 'Perkelahian'}})
                 item_ids['fight'].add(track_id)
             current_time = time.time()
             if current_time - last_save_time >= 10:
@@ -220,7 +221,7 @@ while True:
 
         if class_name == "knife":
             if track_id not in item_ids['knife']:
-                send_to_ubidots('jumlah_bahaya', {'value': 1})
+                send_to_ubidots('jumlah_bahaya', {'value': 1, 'context': {'timestamp': datetime.now().strftime("%H:%M"), 'type': 'Senjata'}})
                 item_ids['knife'].add(track_id)
             current_time = time.time()
             if current_time - last_save_time >= 10:
