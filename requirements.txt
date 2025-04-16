@@ -9,8 +9,11 @@ colorama==0.4.6
 contourpy==1.3.1
 cycler==0.12.1
 defusedxml==0.7.1
+dlib @ file:///D:/sic-stage3/dlib-19.22.99-cp310-cp310-win_amd64.whl#sha256=f2181b6724669fb0147c9ebc326d72b94de41bced1812eff5df4b133b5d0b575
 dnspython==2.7.0
 dotenv==0.9.9
+face-recognition==1.3.0
+face_recognition_models==0.3.0
 filelock==3.18.0
 fonttools==4.57.0
 fsspec==2025.3.2
@@ -27,8 +30,8 @@ matplotlib==3.10.1
 mpmath==1.3.0
 narwhals==1.34.1
 networkx==3.4.2
-numpy==2.1.1
-opencv-python==4.11.0.86
+numpy==1.24.4
+opencv-python-headless==4.11.0.86
 packaging==24.2
 paho-mqtt==2.1.0
 pandas==2.2.3
@@ -49,7 +52,6 @@ requests==2.32.3
 rpds-py==0.24.0
 scipy==1.15.2
 seaborn==0.13.2
-setuptools==78.1.0
 six==1.17.0
 smmap==5.0.2
 streamlit==1.44.1
