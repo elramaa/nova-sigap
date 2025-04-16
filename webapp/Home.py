@@ -5,7 +5,6 @@ import os
 from io import BytesIO
 from dotenv import load_dotenv
 from datetime import timedelta, datetime
-import cv2
 
 load_dotenv()
 
