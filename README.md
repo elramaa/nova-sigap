@@ -1,5 +1,6 @@
 # Project Overview
-SIGAP (Sistem Intelijen Garda Aman Pintar) adalah suatu sistem pemantauan yang dilengkapi dengan AI untuk mendeteksi hal-hal mencurigakan dan melaporkannya secara langsung. Sistem ini menggunakan kamera dan esp32 untuk saling berkomunikasi dan dilengkapi dengan dashboard menggunakan streamlit dan ubidots.
+![SIGAP Logo](./images/logo.jpeg Logo SIGAP)
+**SIGAP (Sistem Intelijen Garda Aman Pintar)** adalah suatu sistem pemantauan yang dilengkapi dengan AI untuk mendeteksi hal-hal mencurigakan dan melaporkannya secara langsung. Sistem ini menggunakan kamera dan esp32 untuk saling berkomunikasi dan dilengkapi dengan dashboard menggunakan streamlit dan ubidots.
 
 # Hardware
 - Webcam
