@@ -14,11 +14,20 @@ sus_images_collection = db['sus_images']
 
 today = datetime.combine(datetime.today(), datetime.min.time())
 
-db['members'].find({
+# db['members'].delete_many({
+#     'timestamp': {
+#         '$gte': today,
+#         '$lte': today + timedelta(days=1)
+#     }
+# })
+
+db['sus_images'].delete_many({
     'timestamp': {
         '$gte': today,
         '$lte': today + timedelta(days=1)
-    }
+    },
+    'tag': 'weapon'
 })
+
 
 # get_var_ubidots('camera_status')
