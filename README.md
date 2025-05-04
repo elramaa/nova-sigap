@@ -21,3 +21,22 @@
 - MQTT
 - Face Recognition
 - MongoDB
+
+# How To Run
+1. First, install the dependencies for camera and dashboard app.
+	```
+	$ cd camera
+	$ pip install -r requirements.txt
+	$ cd dashboard
+	$ pip install -r requirements.txt
+	```
+2. Second, run the stream detection application inside camera folder.<br/>
+	```
+	$ cd camera
+	$ python main.py
+	```
+3. Third, run the streamlit. Configure the ip cam to view live stream of the webcam.
+	```
+	$ cd dashboard
+	$ streamlit run Dashboard.py
+	```
