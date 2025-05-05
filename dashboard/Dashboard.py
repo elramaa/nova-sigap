@@ -75,7 +75,7 @@ with col1:
     st.title("SIGAP")
     st.markdown("**Sistem Intelijen Garda Aman Pintar**")
 with col2:
-    st.image("logo.jpeg", width=200)
+    st.image("/logo.jpeg", width=200)
 
 
 # Main Sections
