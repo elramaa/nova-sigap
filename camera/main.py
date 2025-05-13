@@ -16,13 +16,12 @@ from bson import Binary
 from mqtt import connect_mqtt, MQTT
 from datetime import datetime, timedelta
 from collections import defaultdict
-
-# import face_recognition
+import face_recognition
 
 load_dotenv()
 
 app = Flask(__name__)
-cap = cv2.VideoCapture(0)  # or your IP camera URL
+cap = cv2.VideoCapture(2)  # or your IP camera URL
 
 frame_lock = threading.Lock()
 latest_frame = None
@@ -85,16 +84,23 @@ def check_visitors():
     return [visitor["name"] for visitor in visitors]
 
 
+def adjust_gamma(frame, gamma=1.5):
+    invGamma = 1.0 / gamma
+    table = [((i / 255.0) ** invGamma) * 255 for i in range(256)]
+    table = np.array(table, dtype="uint8")
+    return cv2.LUT(frame, table)
+
+
 def detection_thread():
     global latest_frame, original_frame, latest_detection
 
     faces = {}
     # Load images
-    # for image in os.listdir("known_faces"):
-    #     name = image.split(".")[0].title()
-    #     loaded_image = face_recognition.load_image_file(f"known_faces/{image}")
-    #     face_encoding = face_recognition.face_encodings(loaded_image)[0]
-    #     faces[name] = face_encoding
+    for image in os.listdir("known_faces"):
+        name = image.split(".")[0].title()
+        loaded_image = face_recognition.load_image_file(f"known_faces/{image}")
+        face_encoding = face_recognition.face_encodings(loaded_image)[0]
+        faces[name] = face_encoding
 
     # Initialize some variables
     face_locations = []
@@ -114,14 +120,17 @@ def detection_thread():
     presence_duration = defaultdict(float)  # track_id => detik
 
     FPS = cap.get(cv2.CAP_PROP_FPS)
-    max_allowed_duration = 180  # dalam detik = 3 menit
+    max_allowed_duration = 30  # dalam detik = 3 menit
 
     track_history = {}
 
     box_annotator = sv.BoxAnnotator()
     label_annotator = sv.LabelAnnotator()
 
-    last_save_time = time.time()
+    # last_save_time = time.time()
+    last_save_times = {
+        key: time.time() for key in ["package", "weapon", "fight", "idle", "loitering"]
+    }
 
     item_ids = {name: set() for name in ["package", "knife", "fight"]}
 
@@ -135,6 +144,16 @@ def detection_thread():
 
         frame = cv2.resize(frame, (640, 480))
         frame = cv2.flip(frame, 1)
+
+        # Membenarkan backlight supaya tidak terlalu terang
+        lab_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab_frame)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        cl = clahe.apply(l)
+        lframe = cv2.merge((cl, a, b))
+        frame = cv2.cvtColor(lframe, cv2.COLOR_LAB2BGR)
+
+        # frame = adjust_gamma(frame, 1.5)
 
         original_frame = frame.copy()
         original_frame = cv2.resize(original_frame, (640, 480))
@@ -164,45 +183,47 @@ def detection_thread():
 
         # PENGENALAN WAJAH
         # rgb_frame = frame[:, :, ::-1]  # BGR → RGB
+        bgr_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        # face_locations = face_recognition.face_locations(rgb_frame)
-        # face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+        face_locations = face_recognition.face_locations(bgr_frame)
+        face_encodings = face_recognition.face_encodings(bgr_frame, face_locations)
 
-        # for (top, right, bottom, left), face_encoding in zip(
-        #     face_locations, face_encodings
-        # ):
-        #     matches = face_recognition.compare_faces(
-        #         list(faces.values()), face_encoding, tolerance=0.5
-        #     )
-        #     name = "unknown"
+        for (top, right, bottom, left), face_encoding in zip(
+            face_locations, face_encodings
+        ):
+            matches = face_recognition.compare_faces(
+                list(faces.values()), face_encoding, tolerance=0.5
+            )
+            name = "unknown"
 
-        #     if True in matches:
-        #         matched_idx = matches.index(True)
-        #         name = list(faces.keys())[matched_idx]
+            if True in matches:
+                matched_idx = matches.index(True)
+                name = list(faces.keys())[matched_idx]
+                print("face detected")
 
-        #     if name == "unknown":
-        #         cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
-        #     else:
-        #         cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-        #     cv2.putText(
-        #         frame,
-        #         name,
-        #         (left, top - 10),
-        #         cv2.FONT_HERSHEY_SIMPLEX,
-        #         0.9,
-        #         (255, 255, 255),
-        #         2,
-        #     )
+            if name == "unknown":
+                cv2.rectangle(annotated, (left, top), (right, bottom), (0, 0, 255), 2)
+            else:
+                cv2.rectangle(annotated, (left, top), (right, bottom), (0, 255, 0), 2)
+            cv2.putText(
+                annotated,
+                name,
+                (left, top - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.9,
+                (255, 255, 255),
+                2,
+            )
 
-        #     if name != "unknown" and name not in check_visitors():
-        #         db["saved_detections"].insert_one(
-        #             {
-        #                 "name": name,
-        #                 "timestamp": datetime.now(),
-        #                 "image_bin": save_image(frame),
-        #                 "tags": ["safe", "visitor"],
-        #             }
-        #         )
+            if name != "unknown" and name not in check_visitors():
+                db["saved_detections"].insert_one(
+                    {
+                        "name": name,
+                        "timestamp": datetime.now(),
+                        "image_bin": save_image(annotated),
+                        "tags": ["safe", "visitor"],
+                    }
+                )
 
         # Pendeteksian orang yang sama dalam jangkauan kamera
         current_ids = set()
@@ -247,10 +268,10 @@ def detection_thread():
                     )
 
                     current_time = time.time()
-                    if current_time - last_save_time >= 10:
-                        last_save_time = current_time
+                    if current_time - last_save_times["loitering"] >= 10:
+                        last_save_times["loitering"] = current_time
                         send_notif_to_buzzer("bahaya")
-                        save_detections(["suspicious", "same person"], annotated)
+                        save_detections(["suspicious", "loitering"], annotated)
 
         # Bersihkan ID yang sudah hilang dari frame
         all_tracked_ids = set(id_entry_time.keys())
@@ -280,8 +301,8 @@ def detection_thread():
                     2,
                 )
                 current_time = time.time()
-                if current_time - last_save_time >= 10:
-                    last_save_time = current_time
+                if current_time - last_save_times["idle"] >= 10:
+                    last_save_times["idle"] = current_time
                     send_notif_to_buzzer("bahaya")
                     save_detections(["suspicious", "idle"], annotated)
             else:
@@ -320,8 +341,8 @@ def detection_thread():
                 if track_id not in item_ids["fight"]:
                     item_ids["fight"].add(track_id)
                 current_time = time.time()
-                if current_time - last_save_time >= 10:
-                    last_save_time = current_time
+                if current_time - last_save_times["fight"] >= 10:
+                    last_save_times["fight"] = current_time
                     send_notif_to_buzzer("bahaya")
                     save_detections(["suspicious", "fight"], annotated)
 
@@ -329,8 +350,8 @@ def detection_thread():
                 if track_id not in item_ids["knife"]:
                     item_ids["knife"].add(track_id)
                 current_time = time.time()
-                if current_time - last_save_time >= 10:
-                    last_save_time = current_time
+                if current_time - last_save_times["weapon"] >= 10:
+                    last_save_times["weapon"] = current_time
                     send_notif_to_buzzer("bahaya")
                     save_detections(["suspicious", "weapon"], annotated)
 
@@ -349,6 +370,7 @@ def detection_thread():
 
     cap.release()
     cv2.destroyAllWindows()
+    raise SystemExit("Camera Off: Program Terminated. Please restart the program.")
 
 
 # Start detection thread

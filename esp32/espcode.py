@@ -6,17 +6,17 @@ import urequests as requests
 from umqtt.simple import MQTTClient
 
 # ====== MQTT Parameters ======
-client_id = "ahmad-led"
+client_id = "ahmad-ledawdsf"
 broker = "broker.emqx.io"
 user = ""
 password = ""
-topic = "/NOVA/elramaa/buzzer"
+topic = "/NOVA/elrama/buzzer"
 
 # ====== WiFi Connection ======
 wifi_client = network.WLAN(network.STA_IF)
 wifi_client.active(True)
 print("Connecting device to WiFi...")
-wifi_client.connect('Ahmd', '12345678')
+wifi_client.connect("Untuk yang membutuhkan", "bayardulu")
 
 while not wifi_client.isconnected():
     print("Connecting...")
@@ -28,7 +28,7 @@ print(wifi_client.ifconfig())
 print("Connecting to MQTT server... ", end="")
 client = MQTTClient(client_id, broker, user=user, password=password)
 client.connect()
-print('Connected to MQTT')
+print("Connected to MQTT")
 
 # ====== Setup Buzzer & LED ======
 p23 = Pin(23, Pin.OUT)
@@ -36,7 +36,8 @@ buzzer = PWM(p23)
 buzzer.duty(0)
 buzzer.deinit()
 
-led = Pin(13, Pin.OUT)
+led = Pin(18, Pin.OUT)
+
 
 # ====== Bell Sound ======
 def ding_dong():
@@ -52,6 +53,7 @@ def ding_dong():
     time.sleep(0.5)
     buzzer.duty(0)
     buzzer.deinit()
+
 
 # ====== Emergency Alarm + LED Blink ======
 def emergency_alarm(duration=10):
@@ -70,19 +72,21 @@ def emergency_alarm(duration=10):
     buzzer.deinit()
     led.value(0)
 
+
 # ====== MQTT Message Handler ======
 def listener(b_topic, b_msg):
-    topic = str(b_topic, 'utf-8')
-    msg = str(b_msg, 'utf-8')
+    topic = str(b_topic, "utf-8")
+    msg = str(b_msg, "utf-8")
     print("Received:", msg)
 
-    if msg.lower() == 'paket':
-        ding_dong()
+    if msg.lower() == "paket":
         client.publish(topic, "Ada paket")
+        ding_dong()
 
-    elif msg.lower() == 'bahaya':
-        emergency_alarm(10)
+    elif msg.lower() == "bahaya":
         client.publish(topic, "Ada bahaya")
+        emergency_alarm(10)
+
 
 # ====== Subscribe and Loop ======
 client.set_callback(listener)

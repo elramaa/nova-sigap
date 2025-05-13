@@ -75,7 +75,8 @@ with col1:
     st.title("SIGAP")
     st.markdown("**Sistem Intelijen Garda Aman Pintar**")
 with col2:
-    st.image("dashboard/logo.jpeg", width=200)
+    st.image("dashboard/logo.jpeg", width=200) # FOR DEPLOY
+    # st.image("logo.jpeg", width=200)  # FOR LOCAL
 
 
 # Main Sections
@@ -86,9 +87,10 @@ with grid1:
     st.html("<h2 class='section' style='margin:0'>ACTIVITY HISTORY</h2>")
 
     # Calculate start (Monday) and end (Sunday) of the current week
-    today = datetime.now()
+    today = datetime.combine(datetime.today(), datetime.min.time())
     start_of_week = today - timedelta(days=today.weekday())
     end_of_week = start_of_week + timedelta(days=7)
+    print(start_of_week)
 
     # Aggregation pipeline to group by day
     pipeline = [
@@ -117,6 +119,7 @@ with grid1:
         day = day_order[int(r["_id"]) - 1]
         count = r["count"]
         day_counts[day] = count
+
     # Create DataFrame and plot
     df = pd.DataFrame(
         {"Day": list(day_counts.keys()), "Suspicious Count": list(day_counts.values())}
@@ -141,7 +144,7 @@ with grid2:
         "weapon": "Senjata",
         "idle": "Orang berdiam diri",
         "fight": "Perkelahian",
-        "same person": "Orang yang sama",
+        "loitering": "Orang mondar-mandir",
     }
     last_detection = saved_detections.find_one(
         {"tags": "suspicious"}, sort=[("timestamp", -1)]
@@ -380,7 +383,7 @@ tag_translated = {
     "Hal Mencurigakan": "suspicious",
     "Tamu": "visitor",
     "Aman": "safe",
-    "Orang yang sama": "same person",
+    "Mondar mandir": "loitering",
 }
 tag = input_col2.selectbox("Filter Image Tag", list(tag_translated.keys()))
 
@@ -389,19 +392,15 @@ filter_date = datetime.fromisoformat(date.isoformat())
 with st.expander("Visitor Detected"):
     col1, col2, col3, col4 = st.columns(4)
     count = 0
-    visitors = (
-        saved_detections.find(
-            {
-                "timestamp": {
-                    "$gte": filter_date,
-                    "$lte": filter_date + timedelta(days=1),
-                },
-                "tags": "visitor",
-            }
-        )
-        .limit(50)
-        .sort("timestamp", -1)
-    )
+    visitors = saved_detections.find(
+        {
+            "timestamp": {
+                "$gte": filter_date,
+                "$lte": filter_date + timedelta(days=1),
+            },
+            "tags": "visitor",
+        }
+    ).sort("timestamp", -1)
     for visitor in visitors:
         image_stream = BytesIO(visitor["image_bin"])
         if count % 4 == 0:
